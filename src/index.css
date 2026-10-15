@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Paleta Wanderwarm: piedra cálida + noche + rojo "calor" del botón de la prenda. */
+:root {
+  --bg: 255 255 255; --surface: 255 255 255; --surface2: 246 245 243;
+  --ink: 18 17 16; --ink2: 58 55 52; --muted: 125 119 111; --line: 224 219 211;
+  --heat: 226 65 42; --ember: 242 133 58; --ok: 47 125 79; --warn: 168 106 18;
+  color-scheme: light;
+}
+.dark {
+  --bg: 20 19 18; --surface: 28 27 26; --surface2: 35 34 32;
+  --ink: 242 239 234; --ink2: 210 205 197; --muted: 149 143 134; --line: 51 48 45;
+  --heat: 240 86 62; --ember: 246 150 80; --ok: 95 191 133; --warn: 224 168 75;
+  color-scheme: dark;
+}
+html, body, #root { height: 100%; }
+body { @apply bg-bg text-ink font-sans antialiased; font-feature-settings: "ss01"; }
+.tnum { font-variant-numeric: tabular-nums; }
+.wide { font-stretch: 118%; }
+.eyebrow { @apply inline-flex items-center gap-2 text-[12.5px] font-semibold text-muted; }
+.eyebrow::before { content: ""; @apply h-2 w-2 rounded-full bg-heat shadow-[0_0_0_3px_rgb(var(--heat)/0.15)]; }
+.card { @apply relative rounded-[22px] border border-line/70 bg-surface transition-shadow duration-300;
+  box-shadow: 0 1px 2px rgb(18 17 16 / .04), 0 12px 32px -14px rgb(18 17 16 / .14); }
+.card:hover { box-shadow: 0 1px 2px rgb(18 17 16 / .05), 0 18px 44px -16px rgb(18 17 16 / .20); }
+.dark .card { box-shadow: 0 0 0 1px rgb(255 255 255 / .02), 0 14px 34px -16px rgb(0 0 0 / .6); }
+.card-title { @apply font-display text-[16px] font-bold tracking-tight; }
+.btn-base { @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border px-3.5 py-2 text-[13px] font-semibold transition-all active:scale-[.97] disabled:pointer-events-none disabled:opacity-50; }
+.btn { @apply btn-base border-line bg-surface text-ink hover:border-muted; }
+.btn-heat { @apply btn-base border-heat bg-heat text-white hover:brightness-110 hover:shadow-glow; }
+.btn-ink { @apply btn-base border-ink bg-ink text-bg hover:opacity-90; }
+.btn-ghost { @apply btn-base border-transparent bg-transparent text-muted hover:bg-surface2 hover:text-ink; }
+.input { @apply w-full min-w-0 rounded-xl border border-line bg-surface px-3 py-2.5 text-[14px] outline-none transition focus:border-heat focus:ring-4 focus:ring-heat/15; }
+.label { @apply text-[12px] font-semibold text-ink2; }
+.pill-base { @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold; }
+.pill { @apply pill-base border-line bg-surface2 text-ink2; }
+.pill-heat { @apply pill-base border-transparent bg-heat/10 text-heat; }
+.pill-ok { @apply pill-base border-transparent bg-ok/10 text-ok; }
+.pill-warn { @apply pill-base border-transparent bg-warn/15 text-warn; }
+.pill-ink { @apply pill-base border-transparent bg-ink text-bg; }
+.th { @apply px-3 pb-2.5 text-left text-[12px] font-semibold text-muted whitespace-nowrap; }
+.td { @apply border-t border-line px-3 py-3 align-middle text-[13px]; }
+:focus-visible { outline: 2px solid rgb(var(--heat)); outline-offset: 2px; }
+.scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: rgb(var(--line)); border-radius: 8px; }
+.grain::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .07; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+.skeleton { background: linear-gradient(90deg, rgb(var(--surface2)) 25%, rgb(var(--line)) 50%, rgb(var(--surface2)) 75%); background-size: 200% 100%; @apply animate-shimmer; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+.cmd-item { @apply flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] text-ink2; }
+.cmd-item[data-selected="true"] { @apply bg-surface2 text-ink; }
+
+html.compact #main { zoom: 0.9; }
+@media print { aside, nav, header, #main ~ *, [aria-label="Abrir asistente"] { display: none !important; } [role="dialog"] { position: static !important; width: 100% !important; box-shadow: none !important; } }
+
+/* Selects nativos con chevron propio */
+select.input, select.select { @apply appearance-none cursor-pointer pr-9; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23857F78' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+/* Separador tipo costura */
+.stitch { background-image: repeating-linear-gradient(90deg, rgb(var(--line)) 0 6px, transparent 6px 11px); height: 1.5px; }

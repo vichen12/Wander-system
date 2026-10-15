@@ -1,0 +1,17 @@
+export const n0 = (v: number) => Math.round(v || 0).toLocaleString("es-AR");
+export const n1 = (v: number) => (v || 0).toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+export const n2 = (v: number) => (v || 0).toLocaleString("es-AR", { maximumFractionDigits: 2 });
+export const money = (v: number) => "$ " + Math.round(v || 0).toLocaleString("es-AR");
+export const moneyK = (v: number) => (Math.abs(v) >= 1e6 ? "$ " + (v / 1e6).toLocaleString("es-AR", { maximumFractionDigits: 1 }) + " M" : money(v));
+export const isoDate = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+export const today = () => isoDate(new Date());
+export const addDays = (s: string, n: number) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + n); return isoDate(d); };
+export const monthKey = (s: string) => s.slice(0, 7);
+export const days = (a: string, b: string) => Math.round((new Date(b + "T12:00:00").getTime() - new Date(a + "T12:00:00").getTime()) / 86400000);
+export const fdate = (s?: string) => { if (!s) return "—"; const [, m, d] = s.split("-"); return `${d}/${m}`; };
+export const fdateY = (s?: string) => { if (!s) return "—"; const [y, m, d] = s.split("-"); return `${d}/${m}/${y.slice(2)}`; };
+export const fdateLong = (s?: string) => (s ? new Date(s + "T12:00:00").toLocaleDateString("es-AR", { weekday: "short", day: "numeric", month: "short" }) : "—");
+export const monthLabel = (k: string) => { const [y, m] = k.split("-"); return new Date(+y, +m - 1, 1).toLocaleDateString("es-AR", { month: "long", year: "numeric" }); };
+export const uid = (p = "") => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
+export const ordenLabel = (n: number) => "#" + String(n).padStart(3, "0");
+export const initials = (s: string) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
