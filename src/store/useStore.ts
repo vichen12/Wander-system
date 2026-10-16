@@ -109,7 +109,7 @@ export const useStore = create<State>()(
       restaurarDemo: () => set({ ...seedState(), chat: [] }),
     }),
     {
-      name: "wanderwarm-produccion-v2",
+      name: "wanderwarm-produccion-v3",
       partialize: (s) => (remote.enabled
         ? { sesion: s.sesion, tema: s.tema }
         : { usuarios: s.usuarios, materiales: s.materiales, productos: s.productos, talleres: s.talleres, ordenes: s.ordenes, viajes: s.viajes, procesos: s.procesos, config: s.config, sesion: s.sesion, tema: s.tema, seeded: s.seeded }),
