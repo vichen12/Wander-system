@@ -32,7 +32,7 @@ export default function Talleres() {
   return (
     <Page>
       <PageHead eyebrow={"Talleres · " + monthLabel(mes)} title="Quién produce, y con qué calidad">
-        {can(rol, "editarCatalogo") && <button className="btn-heat" onClick={() => setEdit({ id: "", nombre: "", tipo: "confeccion", contacto: "", telefono: "", zona: "", capacidadSemanal: 400 })}><Plus size={16} /> Nuevo taller</button>}
+        {can(rol, "editarCatalogo") && <button className="btn-heat" onClick={() => setEdit({ id: "", nombre: "", tipo: "confeccion", contacto: "", telefono: "", zona: "", capacidadSemanal: 400, km: 8 })}><Plus size={16} /> Nuevo taller</button>}
       </PageHead>
       {!talleres.length ? <Empty title="Sin talleres cargados">Sumá los talleres de corte, confección, bordado y estampado con los que trabajan.</Empty> : (
         <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -87,6 +87,7 @@ function EditarTaller({ t, onClose }: { t: Taller | null; onClose: () => void })
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Tipo"><select className="input" value={x.tipo} onChange={(e) => setF({ ...x, tipo: e.target.value as TipoTaller })}>{Object.entries(TIPOS_TALLER).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
             <Field label="Capacidad semanal (prendas)"><input className="input tnum" inputMode="numeric" value={x.capacidadSemanal} onChange={(e) => setF({ ...x, capacidadSemanal: +e.target.value.replace(/\D/g, "") || 0 })} /></Field>
+            <Field label="Km desde la fábrica" hint="Para estimar los km de la camioneta"><input className="input tnum" inputMode="numeric" value={x.km ?? ""} onChange={(e) => setF({ ...x, km: e.target.value === "" ? undefined : +e.target.value.replace(/\D/g, "") })} /></Field>
             <Field label="Contacto"><input className="input" value={x.contacto} onChange={(e) => setF({ ...x, contacto: e.target.value })} /></Field>
             <Field label="Teléfono"><input className="input" value={x.telefono} onChange={(e) => setF({ ...x, telefono: e.target.value })} /></Field>
             <Field label="Zona"><input className="input" value={x.zona} onChange={(e) => setF({ ...x, zona: e.target.value })} /></Field>

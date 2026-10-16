@@ -4,8 +4,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   Bell, Building2, Database, Download, Eraser, Factory, Info, MapPin, MessageCircle, Monitor, Moon, Palette, Plug, Plus, ReceiptText,
-  RefreshCw, Sparkles, Sun, Tags, Trash2, Upload, Users, X,
+  RefreshCw, Sparkles, Sun, Tags, Trash2, Upload, Users, X, KeyRound, ShieldCheck, Truck,
 } from "lucide-react";
+import Plataforma from "../components/Plataforma";
 import { Field, Page, PageHead, cx } from "../components/ui";
 import { useStore } from "../store/useStore";
 import { remote } from "../lib/supabase";
@@ -13,8 +14,9 @@ import { today, uid } from "../lib/format";
 import type { Config } from "../lib/types";
 import { NAV } from "../components/Layout";
 
-type Sec = "empresa" | "produccion" | "alertas" | "lugares" | "catalogo" | "integraciones" | "apariencia" | "equipo" | "datos" | "acerca";
+type Sec = "plataforma" | "empresa" | "produccion" | "alertas" | "lugares" | "catalogo" | "integraciones" | "apariencia" | "equipo" | "datos" | "acerca";
 const SECS: [Sec, string, ReactNode][] = [
+  ["plataforma", "Plataforma (Stoka)", <KeyRound size={16} />],
   ["empresa", "Empresa", <Building2 size={16} />], ["produccion", "Producción", <Factory size={16} />], ["alertas", "Alertas y avisos", <Bell size={16} />],
   ["lugares", "Lugares y logística", <MapPin size={16} />], ["catalogo", "Listas del sistema", <Tags size={16} />], ["integraciones", "Integraciones", <Plug size={16} />],
   ["apariencia", "Apariencia", <Palette size={16} />], ["equipo", "Equipo y permisos", <Users size={16} />], ["datos", "Datos y copias", <Database size={16} />], ["acerca", "Acerca de", <Info size={16} />],
@@ -52,7 +54,8 @@ function Chips({ items, onChange, placeholder }: { items: string[]; onChange: (v
 export default function Ajustes() {
   const s = useStore();
   const c = s.config;
-  const [sec, setSec] = useState<Sec>("empresa");
+  const yoRol = s.usuarios.find((u) => u.id === s.sesion)?.rol;
+  const [sec, setSec] = useState<Sec>(yoRol === "superadmin" ? "plataforma" : "empresa");
   const [confirm, setConfirm] = useState<"" | "borrar" | "demo">("");
   const file = useRef<HTMLInputElement>(null);
   const ejemplos = [...s.ordenes, ...s.viajes, ...s.productos, ...s.materiales, ...s.talleres].filter((x) => x.ejemplo).length;
@@ -87,7 +90,7 @@ export default function Ajustes() {
       <PageHead eyebrow="Ajustes" title="Configuración del sistema" />
       <div className="grid gap-5 lg:grid-cols-[230px_1fr]">
         <nav className="flex gap-1 overflow-x-auto pb-1 scroll-thin lg:sticky lg:top-4 lg:flex-col lg:self-start lg:overflow-visible">
-          {SECS.map(([k, l, ic]) => (
+          {SECS.filter(([k]) => k !== "plataforma" || yoRol === "superadmin").map(([k, l, ic]) => (
             <button key={k} onClick={() => setSec(k)} className={cx("relative flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-semibold transition-colors", sec === k ? "text-bg" : "text-muted hover:bg-surface2 hover:text-ink")}>
               {sec === k && <motion.span layoutId="aj-tab" className="absolute inset-0 rounded-xl bg-ink" transition={{ type: "spring", stiffness: 400, damping: 34 }} />}
               <span className="relative flex items-center gap-2.5">{ic}{l}</span>
@@ -150,7 +153,16 @@ export default function Ajustes() {
               </Bloque>
             </>)}
 
-            {sec === "lugares" && (
+            {sec === "plataforma" && yoRol === "superadmin" && <Plataforma />}
+
+            {sec === "lugares" && (<>
+              <Bloque title="Camioneta" desc="Se usa para calcular el costo logístico por viaje y por orden.">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Field label="Vehículo"><input className="input" value={c.logistica?.vehiculo || ""} onChange={(e) => s.setConfig("logistica", { costoKm: 0, kmInicial: 0, ...c.logistica, vehiculo: e.target.value })} /></Field>
+                  <Field label="Costo por km ($)" hint="Combustible, desgaste y chofer"><input className="input tnum" inputMode="numeric" value={c.logistica?.costoKm ?? 0} onChange={(e) => s.setConfig("logistica", { vehiculo: "", kmInicial: 0, ...c.logistica, costoKm: +e.target.value.replace(/\D/g, "") })} /></Field>
+                  <Field label="Km del odómetro al empezar"><input className="input tnum" inputMode="numeric" value={c.logistica?.kmInicial ?? 0} onChange={(e) => s.setConfig("logistica", { vehiculo: "", costoKm: 0, ...c.logistica, kmInicial: +e.target.value.replace(/\D/g, "") })} /></Field>
+                </div>
+              </Bloque>
               <Bloque title="Lugares propios" desc="Además de los talleres, a dónde va y vuelve la camioneta. Los km se usan para estimar el recorrido.">
                 <div className="space-y-2">
                   {c.lugares.map((l, i) => (
@@ -159,14 +171,14 @@ export default function Ajustes() {
                       <select className="input !py-2" value={l.tipo} onChange={(e) => s.setConfig("lugares", c.lugares.map((x, j) => (j === i ? { ...x, tipo: e.target.value as typeof l.tipo } : x)))} aria-label="Tipo"><option value="propio">Propio</option><option value="proveedor">Proveedor</option><option value="cliente">Cliente</option></select>
                       <input className="input !py-2" placeholder="Dirección" value={l.direccion} onChange={(e) => s.setConfig("lugares", c.lugares.map((x, j) => (j === i ? { ...x, direccion: e.target.value } : x)))} aria-label="Dirección" />
                       <input className="input !py-2 tnum" type="number" min="0" value={l.kmDesdeFabrica} onChange={(e) => s.setConfig("lugares", c.lugares.map((x, j) => (j === i ? { ...x, kmDesdeFabrica: +e.target.value } : x)))} aria-label="Km desde fábrica" title="Km desde la fábrica" />
-                      <button className="btn-ghost !px-2" disabled={l.nombre === "Fábrica"} onClick={() => s.setConfig("lugares", c.lugares.filter((_, j) => j !== i))} aria-label="Quitar"><Trash2 size={15} /></button>
+                      <button className="btn-ghost !px-2" disabled={l.id === "l-fab"} onClick={() => s.setConfig("lugares", c.lugares.filter((_, j) => j !== i))} aria-label="Quitar"><Trash2 size={15} /></button>
                     </motion.div>
                   ))}
                   <button className="btn" onClick={() => s.setConfig("lugares", [...c.lugares, { id: uid("l-"), nombre: "Nuevo lugar", tipo: "proveedor", direccion: "", kmDesdeFabrica: 0 }])}><Plus size={15} /> Agregar lugar</button>
                 </div>
-                <p className="mt-3 text-[12px] text-muted">Los talleres se administran desde <Link to="/talleres" className="font-semibold text-heat">Talleres</Link>.</p>
+                <p className="mt-3 text-[12px] text-muted">Los talleres (y sus km) se administran desde <Link to="/talleres" className="font-semibold text-heat">Talleres</Link>.</p>
               </Bloque>
-            )}
+            </>)}
 
             {sec === "catalogo" && (<>
               <Bloque title="Motivos de falla" desc="Las opciones al cargar un control de calidad."><Chips items={c.motivosFalla} onChange={(v) => s.setConfig("motivosFalla", v)} placeholder="Nuevo motivo" /></Bloque>
@@ -178,7 +190,7 @@ export default function Ajustes() {
               <div className="grid gap-4 md:grid-cols-2">
                 {[
                   { ic: <Database size={18} />, t: "Base de datos en la nube", d: "Supabase: todo el equipo ve lo mismo en vivo, con permisos por rol.", on: remote.enabled, extra: !remote.enabled && <p className="text-[12px] text-muted">Seguí el README: correr <code className="font-mono">supabase/schema.sql</code> y completar el <code className="font-mono">.env</code>.</p> },
-                  { ic: <Sparkles size={18} />, t: "Asistente con Claude", d: "Entiende cualquier mensaje y lee fotos de remitos y planillas.", on: remote.enabled, extra: <p className="text-[12px] text-muted">{remote.enabled ? "Necesita la función 'asistente' desplegada con la clave de Anthropic." : "En modo demo, el asistente entiende frases comunes."}</p> },
+                  { ic: <Sparkles size={18} />, t: "Asistente con Claude", d: "Entiende cualquier mensaje y lee fotos de remitos y planillas.", on: remote.enabled, extra: <p className="text-[12px] text-muted">{remote.enabled ? "La clave de la API la carga el super admin en Plataforma. Sin clave, el asistente entiende frases comunes." : "En modo demo, el asistente entiende frases comunes."}</p> },
                   { ic: <ReceiptText size={18} />, t: "Facturación (ARCA)", d: "Conectar con el sistema de facturas de Stoka para que cada venta facturada cree su orden sola.", on: c.integraciones.facturacion, toggle: (v: boolean) => up("integraciones", { facturacion: v }), extra: <span className="pill-warn">Fase 3</span> },
                   { ic: <MessageCircle size={18} />, t: "WhatsApp", d: "Que talleres y chofer carguen y consulten por WhatsApp.", on: c.integraciones.whatsapp, toggle: (v: boolean) => up("integraciones", { whatsapp: v }), extra: <Field label="Número de la empresa"><input className="input !py-2" placeholder="+54 9 261 ..." value={c.integraciones.whatsappNumero} onChange={(e) => up("integraciones", { whatsappNumero: e.target.value })} /></Field> },
                   { ic: <Bell size={18} />, t: "Mail al contador", d: "Envío mensual de órdenes y costos.", on: !!c.integraciones.mailContador, extra: <Field label="Mail"><input className="input !py-2" type="email" value={c.integraciones.mailContador} onChange={(e) => up("integraciones", { mailContador: e.target.value })} /></Field> },

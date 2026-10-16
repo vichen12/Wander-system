@@ -1,6 +1,7 @@
 import type { Calidad, Config, Evento, Material, Orden, Proceso, Producto, Taller, Usuario, Viaje } from "./types";
 import { ETAPA_DE_TALLER } from "./types";
 import { addDays, today } from "./format";
+import { armarViaje, lugaresDe, FABRICA } from "./viajes";
 
 // Datos de ejemplo. Se generan relativos a la fecha de hoy para que la demo siempre se vea al día.
 // Todos llevan `ejemplo: true` y se borran desde Ajustes → "Borrar datos de ejemplo".
@@ -57,26 +58,28 @@ export const SEED_PRODUCTOS: Producto[] = [
 ];
 
 export const SEED_TALLERES: Taller[] = [
-  { id: "t-corte", nombre: "Corte Guaymallén", tipo: "corte", contacto: "Taller de corte (ejemplo)", telefono: "261 000-0001", zona: "Guaymallén", capacidadSemanal: 900, ejemplo: true },
-  { id: "t-lh", nombre: "Confección Las Heras", tipo: "confeccion", contacto: "Taller de confección (ejemplo)", telefono: "261 000-0002", zona: "Las Heras", capacidadSemanal: 450, ejemplo: true },
-  { id: "t-gc", nombre: "Confección Godoy Cruz", tipo: "confeccion", contacto: "Taller de confección (ejemplo)", telefono: "261 000-0003", zona: "Godoy Cruz", capacidadSemanal: 350, ejemplo: true },
-  { id: "t-bord", nombre: "Bordados Centro", tipo: "bordado", contacto: "Bordadora (ejemplo)", telefono: "261 000-0004", zona: "Ciudad", capacidadSemanal: 600, ejemplo: true },
-  { id: "t-est", nombre: "Estampados Sur", tipo: "estampado", contacto: "Estampador (ejemplo)", telefono: "261 000-0005", zona: "Maipú", capacidadSemanal: 700, ejemplo: true },
+  { id: "t-corte", km: 7, nombre: "Corte Guaymallén", tipo: "corte", contacto: "Taller de corte (ejemplo)", telefono: "261 000-0001", zona: "Guaymallén", capacidadSemanal: 900, ejemplo: true },
+  { id: "t-lh", km: 9, nombre: "Confección Las Heras", tipo: "confeccion", contacto: "Taller de confección (ejemplo)", telefono: "261 000-0002", zona: "Las Heras", capacidadSemanal: 450, ejemplo: true },
+  { id: "t-gc", km: 6, nombre: "Confección Godoy Cruz", tipo: "confeccion", contacto: "Taller de confección (ejemplo)", telefono: "261 000-0003", zona: "Godoy Cruz", capacidadSemanal: 350, ejemplo: true },
+  { id: "t-bord", km: 4, nombre: "Bordados Centro", tipo: "bordado", contacto: "Bordadora (ejemplo)", telefono: "261 000-0004", zona: "Ciudad", capacidadSemanal: 600, ejemplo: true },
+  { id: "t-est", km: 12, nombre: "Estampados Sur", tipo: "estampado", contacto: "Estampador (ejemplo)", telefono: "261 000-0005", zona: "Maipú", capacidadSemanal: 700, ejemplo: true },
 ];
 
 const CLIENTES = ["Bodega Andina", "Constructora Cuyo", "Club de Montaña", "Agencia Aconcagua", "Hotel Potrerillos", "Minera del Oeste", "Centro de Esquí", "Transportes Cuyanos", "Universidad (área deportes)", "Cooperativa Vitícola"];
 
-export function buildSeed() {
+export function buildSeed(opts: { N?: number; span?: number; choferId?: string } = {}) {
   const r = rng(42);
   const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)];
   const T = today();
   const ordenes: Orden[] = [];
   const viajes: Viaje[] = [];
   let id = 0;
-  const N = 34;
+  const N = opts.N ?? 34;
+  const SPAN = opts.span ?? 95;
+  const traslados: { fecha: string; de: string; a: string; orden: Orden; unidades: number; detalle: string }[] = [];
   for (let i = 0; i < N; i++) {
     const numero = i + 1;
-    const ageDays = Math.round(95 - i * (93 / N) + r() * 3);
+    const ageDays = Math.round(SPAN - i * ((SPAN - 2) / N) + r() * 3);
     const creada = addDays(T, -ageDays);
     const tipo: "venta" | "stock" = r() < 0.32 ? "stock" : "venta";
     const prod = pick(SEED_PRODUCTOS);
@@ -123,18 +126,33 @@ export function buildSeed() {
       prioridad: r() < 0.18 ? "alta" : "normal", fechaEntrega, lineas, etapa, creada, fechaFin, destino: fechaFin ? (tipo === "stock" ? "deposito" : "cliente") : undefined,
       historial: historial.sort((a, b) => a.ts - b.ts), calidad, notas: "", ejemplo: true,
     });
-    // viajes asociados a cada traspaso entre talleres
-    const tal = (x: string) => SEED_TALLERES.find((t) => t.id === x)!.nombre;
+    // Traslados de la camioneta en cada cambio de etapa (se agrupan por día en viajes con paradas)
+    const o = ordenes[ordenes.length - 1];
+    o.asignacion = { "2": "t-corte", "3": conf, "4": pers };
+    const av = (e: number) => historial.find((h) => h.tipo === "avance" && h.etapa === e)?.fecha;
     const hops: [number, string, string, string][] = [
-      [2, "Fábrica", tal("t-corte"), "Tela para " + tot + " prendas"],
-      [3, tal("t-corte"), tal(conf), tot + " prendas cortadas"],
-      [4, tal(conf), tal(pers), tot + " prendas confeccionadas"],
-      [5, tal(pers), "Fábrica", tot + " prendas personalizadas"],
+      [2, FABRICA, "t-corte", "Tela para " + tot + " prendas"],
+      [3, "t-corte", conf, "Prendas cortadas"],
+      [4, conf, pers, "Prendas confeccionadas"],
+      [5, pers, FABRICA, "Prendas personalizadas"],
+      [7, FABRICA, tipo === "stock" ? "l-dep" : "l-exp", tipo === "stock" ? "Ingreso a depósito" : "Despacho al cliente"],
     ];
-    for (const [e, o, de, c] of hops) {
-      const ev = historial.find((h) => h.tipo === "avance" && h.etapa === e);
-      if (ev) viajes.push({ id: "v" + id++, fecha: ev.fecha, origen: o, destino: de, carga: c, ordenes: [numero], km: Math.round(8 + r() * 22), choferId: "u-chofer", ejemplo: true });
-    }
+    for (const [e, de, a2, det] of hops) { const f = av(e); if (f) traslados.push({ fecha: f, de, a: a2, orden: o, unidades: e === 7 ? tot - calidad.reduce((x, c) => x + c.fallas, 0) : tot, detalle: det }); }
+    // retiro parcial: el taller de confección entregó una parte y la camioneta ya la levantó
+    if (etapa === 3) { const parc = historial.filter((h) => h.tipo === "entrega" && h.etapa === 3).reduce((x, h) => x + (h.tipo === "entrega" ? h.unidades : 0), 0); if (parc > 0) traslados.push({ fecha: addDays(T, -1), de: conf, a: pers, orden: o, unidades: parc, detalle: "Entrega parcial confeccionada" }); }
+  }
+  const lugares = lugaresDe(SEED_CONFIG, SEED_TALLERES);
+  const fechas = [...new Set(traslados.map((t) => t.fecha))].sort();
+  let odo = 48210;
+  for (const f of fechas) {
+    const del = traslados.filter((t) => t.fecha === f);
+    // si hay muchos traslados un mismo día, la camioneta hace dos salidas (mañana y tarde)
+    const grupos = del.length > 4 ? [del.slice(0, Math.ceil(del.length / 2)), del.slice(Math.ceil(del.length / 2))] : [del];
+    grupos.forEach((g, gi) => {
+      const v = armarViaje(f, g, lugares, { choferId: opts.choferId ?? "u-chofer", kmInicio: odo, salida: gi ? "14:30" : "08:30", ejemplo: true });
+      odo = (v.kmFin ?? odo) + Math.round(r() * 6);
+      viajes.push(v);
+    });
   }
   return { ordenes, viajes };
 }
@@ -148,12 +166,15 @@ export const SEED_CONFIG: Config = {
   lugares: [
     { id: "l-fab", nombre: "Fábrica", tipo: "propio", direccion: "Mendoza", kmDesdeFabrica: 0 },
     { id: "l-dep", nombre: "Depósito", tipo: "propio", direccion: "Mendoza", kmDesdeFabrica: 6 },
+    { id: "l-exp", nombre: "Expreso (despachos)", tipo: "proveedor", direccion: "Terminal de cargas", kmDesdeFabrica: 5 },
   ],
   motivosFalla: ["Costura despareja", "Estampa corrida", "Bordado desalineado", "Talle mal etiquetado", "Hilo suelto", "Mancha", "Módulo calefactor no enciende"],
   categorias: ["Corporativo", "Calefaccionado", "Merch", "Accesorios"],
   tallesEstandar: ["XS", "S", "M", "L", "XL", "XXL"],
   apariencia: { densidad: "comoda", animaciones: true, inicio: "/tablero" },
   integraciones: { facturacion: false, whatsapp: false, whatsappNumero: "", mailContador: "" },
+  logistica: { costoKm: 420, kmInicial: 48210, vehiculo: "Camioneta utilitaria" },
+  plataforma: { modelo: "claude-sonnet-5-5" },
 };
 
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -180,6 +201,6 @@ export const SEED_PROCESOS: Proceso[] = [
     pasos: ["Doblá cada prenda con la técnica estándar.", "Embolsá con etiqueta de talle visible.", "Armá las cajas por talle y pegá el rótulo (orden, cliente, cantidad).", "Si es venta, adjuntá remito y factura. Si es stock, ingresá al depósito.", "Finalizá la orden en el sistema."],
     checklist: ["Cantidad por talle igual a la orden", "Remito impreso", "Cajas rotuladas"], criterios: ["Faltante de una sola prenda: no se despacha"], errores: ["Despachar sin contar", "Mezclar talles en una caja"], actualizado: hoy(), version: 1 },
   { id: "sop-7", etapa: 7, titulo: "Viajes de la camioneta", objetivo: "Registrar cada movimiento de mercadería entre fábrica, talleres y depósito.", responsable: "Chofer", tiempo: "Cada viaje",
-    pasos: ["Antes de salir, contá lo que llevás.", "Pedí que te firmen el remito al entregar.", "Registrá el viaje en el sistema o mandale un mensaje al asistente: “llevé 200 remeras de la fábrica a Bordados Centro”.", "Indicá a qué órdenes corresponde la carga."],
-    checklist: ["Carga contada", "Remito firmado", "Viaje registrado el mismo día"], criterios: [], errores: ["Registrar los viajes a fin de semana de memoria"], actualizado: hoy(), version: 1 },
+    pasos: ["Al salir de la fábrica tocá \"Iniciar viaje\" y anotá los km del tablero.", "En cada parada (taller, depósito, expreso) agregá la parada y marcá qué dejaste y qué retiraste, de qué orden y cuántas prendas.", "Contá antes de cargar y pedí que te firmen el remito al entregar.", "Al volver, tocá \"Terminar viaje\" y anotá los km del tablero.", "Si no podés cargar en el momento, mandale un mensaje al asistente: “dejé 200 remeras de la orden 15 en Bordados Centro”."],
+    checklist: ["Carga contada", "Remito firmado", "Cada parada con lo que dejaste y retiraste", "Km de salida y llegada"], criterios: [], errores: ["Registrar los viajes a fin de semana de memoria"], actualizado: hoy(), version: 1 },
 ];

@@ -1,5 +1,6 @@
 import type { Material, Orden, Producto, Taller, Viaje } from "./types";
 import { addDays, days, monthKey, today } from "./format";
+import { kmViaje } from "./viajes";
 
 export const unidades = (o: Orden) => o.lineas.reduce((a, l) => a + (+l.cantidad || 0), 0);
 export const atrasada = (o: Orden) => o.etapa < 7 && !!o.fechaEntrega && o.fechaEntrega < today();
@@ -54,7 +55,7 @@ export function metricas(ordenes: Orden[], viajes: Viaje[], talleres: Taller[], 
     }
   }
   const vs = viajes.filter((v) => inRange(v.fecha, desde, hasta));
-  for (const v of vs) { const t = talleres.find((x) => x.nombre === v.destino) || talleres.find((x) => x.nombre === v.origen); if (t) T(t.id).viajes++; }
+  for (const v of vs) for (const id of new Set(v.paradas.map((p) => p.lugarId))) if (talleres.some((t) => t.id === id)) T(id).viajes++;
   const fin = ordenes.filter((o) => o.etapa === 7 && inRange(o.fechaFin, desde, hasta));
   const aTiempo = fin.filter((o) => !o.fechaEntrega || (o.fechaFin || "") <= o.fechaEntrega).length;
   const ciclo = fin.length ? fin.reduce((a, o) => a + Math.max(0, days(o.creada, o.fechaFin!)), 0) / fin.length : null;
@@ -72,7 +73,7 @@ export function metricas(ordenes: Orden[], viajes: Viaje[], talleres: Taller[], 
   });
   return {
     porTaller, confeccionadas, revisadas, fallas, tasa: revisadas ? (fallas / revisadas) * 100 : null,
-    viajes: vs, km: vs.reduce((a, v) => a + (v.km || 0), 0), fin, aTiempo, cumplimiento: fin.length ? (aTiempo / fin.length) * 100 : null, ciclo,
+    viajes: vs, km: vs.reduce((a, v) => a + kmViaje(v), 0), fin, aTiempo, cumplimiento: fin.length ? (aTiempo / fin.length) * 100 : null, ciclo,
     abiertas, porEtapa, atrasadas: abiertas.filter(atrasada), motivos, tEtapa,
     unidadesFin: fin.reduce((a, o) => a + unidades(o), 0),
   };

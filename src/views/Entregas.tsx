@@ -19,8 +19,10 @@ export default function Entregas() {
   const pgH = usePagina(hist, 8);
   if (!t) return <Page><Empty title="No tenés un taller asignado">Pedile a Dirección que te vincule con tu taller desde Equipo.</Empty></Page>;
   const et = ETAPA_DE_TALLER[t.tipo];
-  const mias = ordenes.filter((o) => o.etapa === et);
-  const ent = (o: Orden) => o.historial.filter((h) => h.tipo === "entrega" && h.etapa === et).reduce((a, h) => a + (h.tipo === "entrega" ? h.unidades : 0), 0);
+  // Solo las órdenes asignadas a este taller que están en su etapa
+  const mias = ordenes.filter((o) => o.etapa === et && o.asignacion?.[String(et)] === t.id);
+  const proximas = ordenes.filter((o) => o.etapa < et && o.asignacion?.[String(et)] === t.id);
+  const ent = (o: Orden) => o.historial.filter((h) => h.tipo === "entrega" && h.etapa === et && h.tallerId === t.id).reduce((a, h) => a + (h.tipo === "entrega" ? h.unidades : 0), 0);
   const semana = hist.filter((x) => Date.now() - x.h.ts < 7 * 864e5).reduce((a, x) => a + (x.h.tipo === "entrega" ? x.h.unidades : 0), 0);
 
   return (
@@ -32,10 +34,10 @@ export default function Entregas() {
           <div className="wide font-display text-[26px] font-black">Informar entrega</div>
           <div className="mt-1 max-w-sm text-[14px] text-white/80">Elegí la orden y cuántas prendas entregaste. Producción lo ve al instante.</div>
         </motion.button>
-        <motion.button variants={rise} whileTap={{ scale: 0.98 }} onClick={() => useStore.getState().setChatAbierto(true)} className="relative overflow-hidden rounded-3xl bg-night p-6 text-left text-white">
-          <Camera className="absolute -right-4 -top-4 h-24 w-24 opacity-10" />
+        <motion.button variants={rise} whileTap={{ scale: 0.98 }} onClick={() => useStore.getState().setChatAbierto(true)} className="relative overflow-hidden rounded-3xl border border-line bg-surface p-6 text-left">
+          <Camera className="absolute -right-4 -top-4 h-24 w-24 text-ink opacity-[.06]" />
           <div className="wide font-display text-[20px] font-black">Mandar mensaje o foto</div>
-          <div className="mt-1 text-[13px] text-white/60">El asistente lo lee y lo carga.</div>
+          <div className="mt-1 text-[13px] text-muted">El asistente lo lee y lo carga.</div>
         </motion.button>
       </motion.div>
 
@@ -58,7 +60,14 @@ export default function Entregas() {
             </motion.div>
           ); })}
         </motion.div>
-      ) : <Empty title="No tenés órdenes pendientes">Cuando producción mande una orden a {ETAPAS[et].toLowerCase()}, aparece acá.</Empty>}
+      ) : <Empty title="No tenés órdenes pendientes">Cuando producción te asigne una orden y llegue a {ETAPAS[et].toLowerCase()}, aparece acá.</Empty>}
+
+      {proximas.length > 0 && (<>
+        <h2 className="mb-3 mt-6 font-display text-[16px] font-bold">Próximas para tu taller</h2>
+        <div className="card divide-y divide-line">{proximas.map((o) => (
+          <div key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-[13px]"><span className="font-mono text-[12px] font-semibold">{ordenLabel(o.numero)}</span><span className="flex-1 truncate">{o.lineas.map((l) => `${l.cantidad} ${productos.find((p) => p.id === l.productoId)?.nombre || ""} ${l.talle}`).join(" · ")}</span><span className="pill">Ahora en {ETAPAS[o.etapa].toLowerCase()}</span><span className="tnum text-muted">entrega {fdate(o.fechaEntrega)}</span></div>
+        ))}</div>
+      </>)}
 
       <h2 className="mb-3 mt-6 font-display text-[16px] font-bold">Tus entregas</h2>
       {hist.length ? (

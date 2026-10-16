@@ -19,11 +19,12 @@ function buscarOrden(t: string, ordenes: Orden[]) {
 function buscarTaller(t: string, talleres: Taller[]) {
   return talleres.find((x) => t.includes(norm(x.nombre))) || talleres.find((x) => norm(x.nombre).split(" ").some((w) => w.length > 4 && t.includes(w)));
 }
-function lugar(s: string, talleres: Taller[]) {
+function lugar(s: string, talleres: Taller[]): { id: string; nombre: string } | undefined {
   const t = norm(s);
-  if (/fabrica|planta|oficina/.test(t)) return "Fábrica";
-  if (/deposito/.test(t)) return "Depósito";
-  return buscarTaller(t, talleres)?.nombre;
+  if (/fabrica|planta|oficina/.test(t)) return { id: "l-fab", nombre: "Fábrica" };
+  if (/deposito/.test(t)) return { id: "l-dep", nombre: "Depósito" };
+  if (/expreso|transporte|despacho/.test(t)) return { id: "l-exp", nombre: "Expreso (despachos)" };
+  const x = buscarTaller(t, talleres); return x ? { id: x.id, nombre: x.nombre } : undefined;
 }
 const estado = (o: Orden) =>
   `${ordenLabel(o.numero)} · ${o.cliente}\n- Etapa: ${ETAPAS[o.etapa]}\n- ${n0(unidades(o))} prendas\n- ${o.etapa === 7 ? "Finalizada el " + fdate(o.fechaFin) : (atrasada(o) ? "Atrasada: vencía el " : "Entrega pactada: ") + fdate(o.fechaEntrega)}`;
@@ -44,17 +45,24 @@ export function responder(texto: string, c: Ctx): Respuesta {
     const tal = esTaller ? c.miTaller : buscarTaller(t, c.talleres);
     return { texto: `Preparé el registro. Confirmalo y queda guardado en la ${ordenLabel(o.numero)}.`, accion: { tipo: "entrega", ordenId: o.id, unidades: u, tallerId: tal?.id || null, desc: `${n0(u)} u en ${ETAPAS[o.etapa].toLowerCase()} · ${ordenLabel(o.numero)}${tal ? " · " + tal.nombre : ""}`, estado: "pendiente" } };
   }
-  const viaje = t.match(/(?:lleve|llevamos|viaje|fui|trasladamos|traslade|busque|buscamos)\b.*?\bde(?:sde)?\s+(?:la\s+|el\s+)?(.+?)\s+(?:a|al|hasta|hacia)\s+(?:la\s+|el\s+)?(.+?)(?:[,.]|$)/);
-  if (viaje) {
+  // Camioneta: "dejé 200 de la orden 15 en Bordados Centro", "retiré 120 de la orden 31 de Confección Las Heras",
+  // "llevé 200 remeras de la orden 15 de la fábrica a Bordados Centro"
+  const tras = t.match(/(?:lleve|llevamos|traslade|trasladamos)\b.*?\bde(?:sde)?\s+(?:la\s+|el\s+)?(.+?)\s+(?:a|al|hasta|hacia)\s+(?:la\s+|el\s+)?(.+?)(?:[,.]|$)/);
+  const deja = !tras && t.match(/(?:deje|dejamos|descargue|entregue en|baje)\b.*?\s(?:en|a|al)\s+(?:la\s+|el\s+)?(.+?)(?:[,.]|$)/);
+  const retira = !tras && t.match(/(?:retire|retiramos|busque|buscamos|levante|cargue)\b.*?\s(?:de|en|del)\s+(?:la\s+|el\s+)?([a-z][^,.]+?)(?:[,.]|$)/);
+  if (tras || deja || retira) {
     if (esTaller) return { texto: "Los viajes los registra el chofer o producción." };
-    const ori = lugar(viaje[1], c.talleres), des = lugar(viaje[2], c.talleres);
-    if (!ori || !des) return { texto: `No reconozco ${!ori ? "el origen" : "el destino"}. Lugares válidos: Fábrica, Depósito, ${c.talleres.map((x) => x.nombre).join(", ")}.` };
-    const carga = (texto.match(/(\d[\d.]*\s*[a-záéíóúñ]+)/i)?.[1] || "").trim();
-    const ords = [...t.matchAll(/(?:orden|#)\s*(\d+)/g)].map((m) => +m[1]);
-    return { texto: "Preparé el viaje. Confirmalo para guardarlo.", accion: { tipo: "viaje", viaje: { fecha: today(), origen: ori, destino: des, carga, ordenes: ords, km: 0 }, desc: `${ori} → ${des}${carga ? " · " + carga : ""}`, estado: "pendiente" } };
+    if (!o) return { texto: "¿De qué orden era la mercadería? Ej: “dejé 200 remeras de la orden 15 en Bordados Centro”." };
+    const u = num(t.replace(/(orden|op|#)\s*\d+/g, "").match(/(\d[\d.]*)/)?.[1] || "0") || unidades(o);
+    const destino = lugar((tras ? tras[2] : deja ? deja[1] : (retira as RegExpMatchArray)[1]).replace(/(orden|#)\s*\d+/g, ""), c.talleres);
+    const origen = tras ? lugar(tras[1].replace(/(orden|#)\s*\d+/g, ""), c.talleres) : undefined;
+    if (!destino || (tras && !origen)) return { texto: `No reconozco el lugar. Lugares válidos: Fábrica, Depósito, Expreso, ${c.talleres.map((x) => x.nombre).join(", ")}.` };
+    const tipo = tras ? "traslado" : deja ? "deja" : "retira";
+    const desc = tipo === "traslado" ? `${origen!.nombre} → ${destino.nombre} · ${n0(u)} u de ${ordenLabel(o.numero)}` : `${tipo === "deja" ? "Dejó" : "Retiró"} ${n0(u)} u de ${ordenLabel(o.numero)} ${tipo === "deja" ? "en" : "de"} ${destino.nombre}`;
+    return { texto: "Lo sumo a tu viaje de hoy (si no tenés uno abierto, arranco uno desde la fábrica). Confirmalo:", accion: { tipo: "viaje", mov: { tipo, ordenId: o.id, numero: o.numero, unidades: u, lugarId: destino.id, deLugarId: origen?.id }, desc, estado: "pendiente" } };
   }
   if (/(revisamos|revise|control|calidad).*(falla|defect|mal)/.test(t) && o) {
-    if (!["direccion", "produccion"].includes(c.rol)) return { texto: "El control de calidad lo carga producción." };
+    if (!["superadmin", "direccion", "produccion"].includes(c.rol)) return { texto: "El control de calidad lo carga producción." };
     const nums = [...t.matchAll(/(\d[\d.]*)/g)].map((m) => num(m[1])).filter((x) => x !== o.numero);
     if (nums.length < 2) return { texto: "Decime cuántas revisaste y cuántas tenían falla. Ej: “revisamos 200 de la orden 5, 6 con falla”." };
     const [rev, fal] = nums[0] >= nums[1] ? nums : [nums[1], nums[0]];
@@ -64,7 +72,7 @@ export function responder(texto: string, c: Ctx): Respuesta {
     return { texto: "Preparé el control de calidad. Confirmalo para guardarlo.", accion: { tipo: "calidad", ordenId: o.id, tallerId: tal.id, revisadas: rev, fallas: fal, motivo, desc: `${fal} con falla de ${rev} · ${ordenLabel(o.numero)} · ${tal.nombre}`, estado: "pendiente" } };
   }
   if (/(pasa|pasala|pasar|avanza|avanzar|mover|move|finaliza|finalizar|cerra)/.test(t) && o) {
-    if (!["direccion", "produccion"].includes(c.rol)) return { texto: "Mover órdenes de etapa lo hace producción." };
+    if (!["superadmin", "direccion", "produccion"].includes(c.rol)) return { texto: "Mover órdenes de etapa lo hace producción." };
     if (o.etapa === 7) return { texto: `La ${ordenLabel(o.numero)} ya está finalizada.` };
     return { texto: "Listo para mover. Confirmá:", accion: { tipo: "avance", ordenId: o.id, desc: o.etapa === 6 ? `Finalizar ${ordenLabel(o.numero)}` : `Pasar ${ordenLabel(o.numero)} a ${ETAPAS[o.etapa + 1]}`, estado: "pendiente" } };
   }
@@ -82,7 +90,8 @@ export function responder(texto: string, c: Ctx): Respuesta {
     return { texto: `Tasa de fallas del mes: ${n1(M.tasa || 0)}%.\n` + rows.map((r) => `- ${r.n}: ${n1(r.t)}% (${r.f} de ${n0(r.r)})`).join("\n") };
   }
   if (/viaje|camioneta|km/.test(t)) {
-    return { texto: `Este mes la camioneta hizo ${M.viajes.length} viajes (${n0(M.km)} km aprox.).` + (M.viajes[0] ? `\nÚltimo: ${fdate(M.viajes[0].fecha)} ${M.viajes[0].origen} → ${M.viajes[0].destino}.` : "") };
+    const ult = [...M.viajes].sort((x, y) => y.fecha.localeCompare(x.fecha))[0];
+    return { texto: `Este mes la camioneta hizo ${M.viajes.length} viajes (${n0(M.km)} km).` + (ult ? `\nÚltimo: ${fdate(ult.fecha)} ${ult.paradas.map((p) => p.nombre).join(" → ")}.` : "") };
   }
   if (/tela|material|insumo|comprar|necesit/.test(t)) {
     const ab = c.ordenes.filter((x) => x.etapa <= 1);
@@ -111,6 +120,6 @@ export function responder(texto: string, c: Ctx): Respuesta {
   return {
     texto: esTaller
       ? "Puedo registrar entregas (“entregué 120 remeras de la orden 7”) o decirte qué tenés pendiente."
-      : "Probá con: “¿cómo va la orden 12?”, “¿qué está atrasado?”, “¿qué taller tiene más fallas?”, “entregaron 80 buzos de la orden 9”, “llevé 200 remeras de la fábrica a Bordados Centro”.",
+      : "Probá con: “¿cómo va la orden 12?”, “¿qué está atrasado?”, “¿qué taller tiene más fallas?”, “entregaron 80 buzos de la orden 9”, “dejé 200 remeras de la orden 15 en Bordados Centro”.",
   };
 }

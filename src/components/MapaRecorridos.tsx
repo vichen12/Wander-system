@@ -5,7 +5,8 @@ import { Seg, cx } from "./ui";
 import { useStore } from "../store/useStore";
 import { useColors } from "../lib/colors";
 import { addDays, fdate, n0, ordenLabel, today } from "../lib/format";
-import { TIPOS_TALLER, type TipoTaller } from "../lib/types";
+import { TIPOS_TALLER, type TipoTaller, type Viaje } from "../lib/types";
+import { FABRICA, kmViaje } from "../lib/viajes";
 
 type Periodo = "7" | "30" | "90";
 const COLS = ["Sale de", "Corte", "Confección", "Personalización", "Llega a"];
@@ -24,28 +25,37 @@ export default function MapaRecorridos() {
   // Nodos: Fábrica sale (izq), talleres por columna, Fábrica/Depósito llega (der)
   const W = 900, H = 400, padX = 90, top = 64, bottom = 30;
   const colX = (c: number) => padX + (c * (W - padX * 2)) / 4;
-  const propios = config.lugares.map((l) => l.nombre);
   const nodos = useMemo(() => {
     const out: { id: string; nombre: string; col: number; sub: string }[] = [];
-    out.push({ id: "out:Fábrica", nombre: "Fábrica", col: 0, sub: "Salida" });
-    talleres.forEach((t) => out.push({ id: "t:" + t.nombre, nombre: t.nombre, col: colDe(t.tipo), sub: TIPOS_TALLER[t.tipo] + (t.zona ? " · " + t.zona : "") }));
-    propios.forEach((p) => out.push({ id: "in:" + p, nombre: p, col: 4, sub: p === "Fábrica" ? "Vuelve terminado" : "Ingreso a stock" }));
+    out.push({ id: "out:" + FABRICA, nombre: "Fábrica", col: 0, sub: "Salida" });
+    talleres.forEach((t) => out.push({ id: "t:" + t.id, nombre: t.nombre, col: colDe(t.tipo), sub: TIPOS_TALLER[t.tipo] + (t.zona ? " · " + t.zona : "") }));
+    config.lugares.forEach((l) => out.push({ id: "in:" + l.id, nombre: l.nombre, col: 4, sub: l.id === FABRICA ? "Vuelve a fábrica" : l.tipo === "propio" ? "Ingreso a stock" : "Despacho" }));
     const byCol: Record<number, typeof out> = {};
     out.forEach((n) => (byCol[n.col] ||= []).push(n));
     return out.map((n) => { const arr = byCol[n.col]; const i = arr.indexOf(n); const h = H - top - bottom; return { ...n, x: colX(n.col), y: top + ((i + 1) * h) / (arr.length + 1) }; });
-  }, [talleres, propios.join()]);
-  const nodoOrigen = (nombre: string) => nodos.find((n) => n.nombre === nombre && n.id.startsWith("t:")) || nodos.find((n) => n.id === "out:" + nombre) || nodos.find((n) => n.id === "in:" + nombre);
-  const nodoDestino = (nombre: string) => nodos.find((n) => n.nombre === nombre && n.id.startsWith("t:")) || nodos.find((n) => n.id === "in:" + nombre) || nodos.find((n) => n.id === "out:" + nombre);
+  }, [talleres, config.lugares]);
+  const nodoOrigen = (id: string) => nodos.find((n) => n.id === "t:" + id) || nodos.find((n) => n.id === "out:" + id) || nodos.find((n) => n.id === "in:" + id);
+  const nodoDestino = (id: string) => nodos.find((n) => n.id === "t:" + id) || nodos.find((n) => n.id === "in:" + id) || nodos.find((n) => n.id === "out:" + id);
+  /** Tramos de un viaje: cada par de paradas consecutivas. */
+  const tramosDe = (v: Viaje) => v.paradas.slice(1).map((p, i) => ({ a: nodoOrigen(v.paradas[i].lugarId), b: nodoDestino(p.lugarId) }));
 
   const rutas = useMemo(() => {
     const m = new Map<string, { a: (typeof nodos)[number]; b: (typeof nodos)[number]; n: number; km: number; ords: Set<number>; ultimo: string }>();
+    // Flujo de mercadería: dónde se RETIRÓ cada orden → dónde se DEJÓ, dentro de cada viaje.
     for (const v of vs) {
-      const a = nodoOrigen(v.origen), b = nodoDestino(v.destino);
-      if (!a || !b || a === b) continue;
-      const k = a.id + ">" + b.id;
-      const r = m.get(k) || { a, b, n: 0, km: 0, ords: new Set<number>(), ultimo: "" };
-      r.n++; r.km += v.km || 0; v.ordenes.forEach((o) => r.ords.add(o)); if (v.fecha > r.ultimo) r.ultimo = v.fecha;
-      m.set(k, r);
+      const vistos = new Set<string>();
+      v.paradas.forEach((pd, j) => pd.movs.forEach((mv) => {
+        if (mv.tipo !== "deja") return;
+        let i = j - 1; while (i >= 0 && !v.paradas[i].movs.some((x) => x.tipo === "retira" && x.ordenId === mv.ordenId)) i--;
+        if (i < 0) return;
+        const a = nodoOrigen(v.paradas[i].lugarId), b = nodoDestino(pd.lugarId);
+        if (!a || !b || a === b) return;
+        const k = a.id + ">" + b.id;
+        const r = m.get(k) || { a, b, n: 0, km: 0, ords: new Set<number>(), ultimo: "" };
+        if (!vistos.has(k)) { r.n++; vistos.add(k); }
+        r.km += mv.unidades; r.ords.add(mv.numero); if (v.fecha > r.ultimo) r.ultimo = v.fecha;
+        m.set(k, r);
+      }));
     }
     return [...m.entries()].map(([k, r]) => ({ k, ...r })).sort((x, y) => y.n - x.n);
   }, [vs, nodos]);
@@ -76,7 +86,7 @@ export default function MapaRecorridos() {
           {COLS.map((c, i) => (
             <g key={c}>
               <rect x={colX(i) - 72} y={14} width={144} height={H - 22} rx={16} fill={i === 0 || i === 4 ? C.surface : "transparent"} stroke={C.line} strokeDasharray={i === 0 || i === 4 ? "0" : "4 6"} opacity={0.9} />
-              <text x={colX(i)} y={38} textAnchor="middle" fontSize="11" fontWeight={800} letterSpacing="1.5" fill={C.muted}>{c.toUpperCase()}</text>
+              <text x={colX(i)} y={38} textAnchor="middle" fontSize="12" fontWeight={700} fill={C.muted}>{c}</text>
               {i < 4 && <path d={`M${colX(i) + 78},30 l8,4 l-8,4`} fill="none" stroke={C.muted} strokeWidth={1.5} />}
             </g>
           ))}
@@ -130,14 +140,14 @@ export default function MapaRecorridos() {
                 <div className="flex items-center gap-1.5 text-[13.5px] font-bold">{selRutas[0].a.nombre}<ArrowRight size={14} className="text-heat" />{selRutas[0].b.nombre}</div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                   <div className="rounded-xl bg-surface2 p-2"><div className="tnum text-[18px] font-extrabold">{selRutas[0].n}</div><div className="text-[10.5px] text-muted">viajes</div></div>
-                  <div className="rounded-xl bg-surface2 p-2"><div className="tnum text-[18px] font-extrabold">{n0(selRutas[0].km)}</div><div className="text-[10.5px] text-muted">km</div></div>
+                  <div className="rounded-xl bg-surface2 p-2"><div className="tnum text-[18px] font-extrabold">{n0(selRutas[0].km)}</div><div className="text-[10.5px] text-muted">prendas</div></div>
                   <div className="rounded-xl bg-surface2 p-2"><div className="tnum text-[18px] font-extrabold">{selRutas[0].ords.size}</div><div className="text-[10.5px] text-muted">órdenes</div></div>
                 </div>
                 <div className="mt-2 text-[11.5px] text-muted">Último viaje: {fdate(selRutas[0].ultimo)}</div>
               </>)}
               <ul className="mt-3 max-h-36 space-y-1 overflow-y-auto text-[12px] scroll-thin">
-                {vs.filter((v) => { const a = nodoOrigen(v.origen), b = nodoDestino(v.destino); return selNodo ? a?.id === sel || b?.id === sel : a?.id + ">" + b?.id === sel; }).slice(0, 12).map((v) => (
-                  <li key={v.id} className="flex justify-between gap-2 rounded-lg px-2 py-1 hover:bg-surface2"><span className="text-muted">{fdate(v.fecha)}</span><span className="truncate">{v.carga}</span><span className="font-mono text-muted">{v.ordenes.map(ordenLabel).join(" ")}</span></li>
+                {vs.filter((v) => tramosDe(v).some(({ a, b }) => selNodo ? a?.id === sel || b?.id === sel : a?.id + ">" + b?.id === sel)).slice(0, 12).map((v) => (
+                  <li key={v.id} className="flex justify-between gap-2 rounded-lg px-2 py-1 hover:bg-surface2"><span className="shrink-0 text-muted">{fdate(v.fecha)}</span><span className="truncate">{v.paradas.map((p) => p.nombre.split(" ")[0]).join(" → ")}</span><span className="truncate font-mono text-muted">{[...new Set(v.paradas.flatMap((p) => p.movs.map((m) => m.numero)))].map(ordenLabel).join(" ")}</span></li>
                 ))}
               </ul>
             </motion.div>
@@ -147,11 +157,11 @@ export default function MapaRecorridos() {
 
       <div className="mt-3 flex items-start gap-2 rounded-xl bg-surface2 px-3 py-2.5 text-[12px] text-ink2">
         <Info size={15} className="mt-0.5 shrink-0 text-heat" />
-        <span>La mercadería viaja de izquierda a derecha: sale de la fábrica, pasa por corte, confección y personalización, y vuelve. <b>Cada número es la cantidad de viajes</b> por ese recorrido. Tocá un lugar o una línea para ver el detalle.</span>
+        <span>La mercadería viaja de izquierda a derecha: sale de la fábrica, pasa por corte, confección y personalización, y vuelve. <b>Cada número es en cuántos viajes la mercadería hizo ese paso</b> (por ejemplo, de corte a confección). Tocá un lugar o una línea para ver el detalle. </span>
       </div>
 
       <div className="mt-4">
-        <div className="eyebrow mb-2 flex items-center gap-1.5"><Route size={13} /> Recorridos más usados</div>
+        <div className="eyebrow mb-2 flex items-center gap-1.5"><Route size={13} /> Pasos más frecuentes</div>
         <div className="grid gap-2 sm:grid-cols-2">
           {rutas.slice(0, 6).map((r, i) => (
             <button key={r.k} onClick={() => setSel(r.k)} onMouseEnter={() => setHover(r.k)} onMouseLeave={() => setHover(null)} className={cx("flex items-center gap-3 rounded-xl border px-3 py-2 text-left text-[12.5px] transition", sel === r.k ? "border-heat bg-heat/5" : "border-line hover:border-muted")}>

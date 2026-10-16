@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AnimatePresence, MotionConfig } from "framer-motion";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import Layout, { homeFor, NAV } from "./components/Layout";
 import Login from "./views/Login";
 import Tablero from "./views/Tablero";
@@ -15,7 +15,9 @@ import Procesos from "./views/Procesos";
 import Equipo from "./views/Equipo";
 import Ajustes from "./views/Ajustes";
 import { useRol, useStore } from "./store/useStore";
-import { remote, supabase } from "./lib/supabase";
+import { mensajeError, remote, supabase } from "./lib/supabase";
+import { Logo } from "./components/ui";
+import { NuevaClave } from "./views/Login";
 
 export default function App() {
   const tema = useStore((s) => s.tema);
@@ -28,23 +30,41 @@ export default function App() {
   useEffect(() => { document.documentElement.classList.toggle("dark", tema === "oscuro"); }, [tema]);
   useEffect(() => { document.documentElement.classList.toggle("compact", apar.densidad === "compacta"); }, [apar.densidad]);
 
-  // Modo Supabase: cargar datos y escuchar cambios en vivo.
+  // Modo Supabase: cargar datos, escuchar cambios en vivo y avisar si algo no se pudo guardar.
+  const [recuperando, setRecuperando] = useState(false);
   useEffect(() => {
     if (!remote.enabled || !supabase) return;
     let off = () => {};
-    const cargar = async () => { try { const d = await remote.loadAll(); if (d) useStore.getState().hydrateRemote(d as never); } catch (e) { console.warn(e); } setCargando(false); };
+    const cargar = async () => {
+      const v0 = remote.version();
+      try {
+        const d = await remote.loadAll();
+        // si mientras se cargaba alguien guardó algo, se descarta esta lectura y se vuelve a pedir
+        if (remote.version() !== v0 || remote.ocupado()) { setTimeout(cargar, 600); return; }
+        if (d) useStore.getState().hydrateRemote(d as never);
+      }
+      catch (e) { toast.error("No se pudieron cargar los datos: " + mensajeError(e)); }
+      setCargando(false);
+    };
+    remote.onError((msg) => { toast.error("No se guardó: " + msg); cargar(); });
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) { useStore.getState().login(data.session.user.id); cargar(); off = remote.subscribe(cargar); } else { useStore.getState().logout(); setCargando(false); }
+      if (data.session) { useStore.getState().login(data.session.user.id); cargar(); off = remote.subscribe(cargar); }
+      else { useStore.getState().logout(); setCargando(false); }
     });
-    return () => off();
+    const { data: sub } = supabase.auth.onAuthStateChange((ev) => {
+      if (ev === "PASSWORD_RECOVERY") setRecuperando(true);
+      if (ev === "SIGNED_OUT") useStore.setState({ sesion: null, vistaComo: null });
+    });
+    return () => { off(); sub.subscription.unsubscribe(); };
   }, [sesion]);
 
-  if (cargando) return <div className="grid h-full place-items-center bg-night text-white/60">Cargando…</div>;
+  if (cargando) return <div className="grid h-full place-items-center bg-bg"><div className="flex flex-col items-center gap-3 text-muted"><Logo className="w-14 text-ink" animated /><span className="text-[13px]">Cargando…</span></div></div>;
+  if (recuperando) return <NuevaClave onListo={() => setRecuperando(false)} />;
 
   const permitido = (path: string) => !!rol && NAV.find((n) => n.to === path)?.roles.includes(rol);
   const guard = (path: string, el: JSX.Element) => (permitido(path) ? el : <Navigate to={homeFor(rol)} replace />);
 
-  const inicio = rol === "direccion" && apar.inicio ? apar.inicio : homeFor(rol);
+  const inicio = (rol === "direccion" || rol === "superadmin") && apar.inicio ? apar.inicio : homeFor(rol);
   return (
     <MotionConfig reducedMotion={apar.animaciones ? "user" : "always"}>
       <Toaster position="bottom-center" toastOptions={{ className: "!rounded-xl !font-sans" }} richColors />

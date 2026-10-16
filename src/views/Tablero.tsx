@@ -58,7 +58,7 @@ export default function Tablero() {
   const limpiar = () => { setPer("mes"); setTipo(""); setProd(""); setTaller(""); };
 
   const ords = useMemo(() => ordenes.filter((o) => (!tipo || o.tipo === tipo) && (!prod || o.lineas.some((l) => l.productoId === prod)) && (!taller || o.historial.some((h) => h.tipo === "entrega" && h.tallerId === taller) || o.calidad.some((c) => c.tallerId === taller))), [ordenes, tipo, prod, taller]);
-  const vjs = useMemo(() => { const t = talleres.find((x) => x.id === taller)?.nombre; return viajes.filter((v) => !t || v.origen === t || v.destino === t); }, [viajes, taller, talleres]);
+  const vjs = useMemo(() => viajes.filter((v) => !taller || v.paradas.some((p) => p.lugarId === taller)), [viajes, taller]);
   const M = useMemo(() => metricas(ords, vjs, talleres, a, b), [ords, vjs, talleres, a, b]);
   const S = useMemo(() => serie(ords, a, b, taller), [ords, a, b, taller]);
   const T = taller ? M.porTaller[taller] : null;
@@ -69,7 +69,7 @@ export default function Tablero() {
   const maxU = Math.max(1, ...filas.map((f) => f.unidades));
   const maxEt = Math.max(...M.porEtapa.map((e) => e.n));
   const motivos = Object.entries(M.motivos).map(([k, v]) => ({ name: k, value: v })).sort((x, y) => y.value - x.value);
-  const viajesPorDestino = Object.entries(M.viajes.reduce<Record<string, number>>((acc, v) => ((acc[v.destino] = (acc[v.destino] || 0) + 1), acc), {})).map(([d, n]) => ({ d, n })).sort((x, y) => y.n - x.n);
+  const viajesPorDestino = Object.entries(M.viajes.reduce<Record<string, number>>((acc, v) => { new Set(v.paradas.filter((p) => p.lugarId !== "l-fab").map((p) => p.nombre)).forEach((n) => (acc[n] = (acc[n] || 0) + 1)); return acc; }, {})).map(([d, n]) => ({ d, n })).sort((x, y) => y.n - x.n);
   const lento = [...M.tEtapa].sort((x, y) => y.dias - x.dias)[0];
   const hora = new Date().getHours();
   const saludo = hora < 13 ? "Buen día" : hora < 20 ? "Buenas tardes" : "Buenas noches";
@@ -228,7 +228,7 @@ export default function Tablero() {
               </>) : <Empty title="Sin fallas registradas" />}
             </section>
             <section className="card p-5">
-              <h2 className="mb-3 font-display text-[16px] font-bold">Viajes por destino</h2>
+              <h2 className="mb-3 font-display text-[16px] font-bold">Lugares que más visita la camioneta</h2>
               {viajesPorDestino.length ? (
                 <div className="h-[220px]">
                   <ResponsiveContainer>

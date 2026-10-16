@@ -8,7 +8,9 @@ import { useRol, useStore } from "../store/useStore";
 import { can } from "../lib/roles";
 import { necesidades, unidades } from "../lib/metrics";
 import { ETAPAS, ETAPA_DESC, ETAPA_DE_TALLER, type Linea, type Orden } from "../lib/types";
-import { addDays, fdateY, money, n0, n2, ordenLabel, today } from "../lib/format";
+import { addDays, fdate, fdateY, money, n0, n2, ordenLabel, today } from "../lib/format";
+import { movimientosOrden, ubicacionOrden } from "../lib/viajes";
+import { MapPin, Truck } from "lucide-react";
 import { festejar } from "../views/Ordenes";
 
 export function DetalleOrden({ id, onClose, onEditar }: { id: string | null; onClose: () => void; onEditar: (id: string) => void }) {
@@ -30,7 +32,8 @@ export function DetalleOrden({ id, onClose, onEditar }: { id: string | null; onC
   }, [o?.etapa, s.talleres]);
   useEffect(() => {
     const resp = o ? [...o.historial].reverse().find((h) => h.tipo === "entrega" && h.etapa === 3 && h.tallerId) : undefined;
-    setTal(cand[0]?.id || (resp?.tipo === "entrega" && resp.tallerId) || s.talleres[0]?.id || "");
+    const asig = o?.asignacion?.[String(o.etapa)];
+    setTal((asig && cand.some((t) => t.id === asig) ? asig : "") || cand[0]?.id || (resp?.tipo === "entrega" && resp.tallerId) || s.talleres[0]?.id || "");
   }, [cand, o?.id]);
   if (!o) return <Sheet open={false} onClose={onClose}>{null}</Sheet>;
 
@@ -95,6 +98,8 @@ export function DetalleOrden({ id, onClose, onEditar }: { id: string | null; onC
           </div>
         </motion.section>
       )}
+
+      <TalleresYCamioneta o={o} editable={can(rol, "editarOrdenes")} />
 
       <section className="mt-6">
         <h3 className="eyebrow mb-2">Prendas</h3>
@@ -264,5 +269,66 @@ export function NuevaOrden({ open, editarId, onClose, onCreada }: { open: boolea
         </div>
       </div>
     </Sheet>
+  );
+}
+
+const ETAPAS_TALLER: { key: string; nombre: string; tipos: string[] }[] = [
+  { key: "2", nombre: "Corte", tipos: ["corte"] },
+  { key: "3", nombre: "Confección", tipos: ["confeccion"] },
+  { key: "4", nombre: "Personalización", tipos: ["bordado", "estampado", "sublimado"] },
+];
+
+/** Qué taller hace cada etapa de la orden, dónde está la mercadería y qué movió la camioneta. */
+function TalleresYCamioneta({ o, editable }: { o: Orden; editable: boolean }) {
+  const s = useStore();
+  const ubic = ubicacionOrden(o, s.viajes);
+  const movs = movimientosOrden(o, s.viajes);
+  const asignar = (k: string, tid: string) => {
+    const asignacion = { ...(o.asignacion || {}) };
+    if (tid) asignacion[k] = tid; else delete asignacion[k];
+    s.editarOrden(o.id, { asignacion });
+    toast.success(tid ? "Taller asignado" : "Asignación quitada");
+  };
+  return (
+    <section className="mt-6 grid gap-3 sm:grid-cols-2">
+      <div className="card p-4">
+        <h3 className="mb-2 text-[13px] font-bold">Talleres de esta orden</h3>
+        <div className="space-y-2">
+          {ETAPAS_TALLER.map((e) => {
+            const opciones = s.talleres.filter((t) => e.tipos.includes(t.tipo));
+            const actual = o.asignacion?.[e.key] || "";
+            return (
+              <label key={e.key} className="flex items-center gap-2 text-[12.5px]">
+                <span className={cx("w-[104px] shrink-0", String(o.etapa) === e.key ? "font-bold text-heat" : "text-muted")}>{e.nombre}</span>
+                {editable ? (
+                  <select className="input !py-1.5 text-[12.5px]" value={actual} onChange={(ev) => asignar(e.key, ev.target.value)} aria-label={"Taller de " + e.nombre}>
+                    <option value="">Sin asignar</option>
+                    {opciones.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                  </select>
+                ) : <span className="font-semibold">{s.talleres.find((t) => t.id === actual)?.nombre || "Sin asignar"}</span>}
+              </label>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11.5px] text-muted">El taller asignado ve la orden en su pantalla y es el único que puede informar entregas. Si la camioneta deja la orden en un taller, queda asignado solo.</p>
+      </div>
+      <div className="card p-4">
+        <h3 className="mb-2 flex items-center gap-1.5 text-[13px] font-bold"><Truck size={14} className="text-heat" /> Camioneta</h3>
+        {ubic ? (
+          <div className="mb-2 flex items-start gap-2 rounded-xl bg-surface2 px-3 py-2 text-[12.5px]">
+            <MapPin size={15} className="mt-0.5 shrink-0 text-heat" />
+            <span>Último movimiento: <b>{ubic.tipo === "deja" ? "dejó" : "retiró"} {n0(ubic.unidades)} u</b> {ubic.tipo === "deja" ? "en" : "de"} <b>{ubic.lugar}</b>, {fdate(ubic.fecha)}{ubic.hora ? " " + ubic.hora : ""}.</span>
+          </div>
+        ) : <p className="text-[12.5px] text-muted">La camioneta todavía no movió mercadería de esta orden.</p>}
+        {movs.length > 0 && (
+          <ol className="max-h-40 space-y-1 overflow-y-auto text-[12px] scroll-thin">
+            {movs.map(({ viaje, parada, mov }) => (
+              <li key={mov.id} className="flex items-center gap-2"><span className="w-12 shrink-0 tnum text-muted">{fdate(viaje.fecha)}</span><span className={mov.tipo === "deja" ? "pill-ok" : "pill"}>{mov.tipo === "deja" ? "Dejó" : "Retiró"}</span><span className="tnum font-semibold">{n0(mov.unidades)}</span><span className="truncate text-ink2">{parada.nombre}</span></li>
+            ))}
+          </ol>
+        )}
+        {movs.length > 0 && <div className="mt-2 text-[11.5px] text-muted">{new Set(movs.map((m) => m.viaje.id)).size} viajes con mercadería de esta orden.</div>}
+      </div>
+    </section>
   );
 }

@@ -4,27 +4,27 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Command } from "cmdk";
 import {
   BarChart3, Boxes, Factory, Shirt, Truck, MessageSquareText, Users, Settings, PackageCheck, ShieldCheck, BookOpen,
-  Search, Moon, Sun, LogOut, Eye, Plus, ChevronDown, ChevronsUpDown, Check,
+  Search, Moon, Sun, LogOut, Eye, Plus, ChevronDown, ChevronsUpDown, Check, KeyRound,
 } from "lucide-react";
 import { HeatButton, Topo } from "./Brand";
 import { Avatar, Logo, cx } from "./ui";
 import ChatWidget from "./ChatWidget";
 import { useRol, useStore, useYo } from "../store/useStore";
-import { ROLES, type Rol } from "../lib/types";
+import { ROLES, esAdmin, type Rol } from "../lib/types";
 import { ordenLabel } from "../lib/format";
 
 type Item = { to: string; label: string; icon: ReactNode; roles: Rol[] };
 export const NAV: Item[] = [
-  { to: "/tablero", label: "Tablero", icon: <BarChart3 size={18} />, roles: ["direccion", "produccion"] },
-  { to: "/ordenes", label: "Órdenes", icon: <Boxes size={18} />, roles: ["direccion", "produccion"] },
-  { to: "/calidad", label: "Calidad", icon: <ShieldCheck size={18} />, roles: ["direccion", "produccion"] },
-  { to: "/talleres", label: "Talleres", icon: <Factory size={18} />, roles: ["direccion", "produccion"] },
-  { to: "/productos", label: "Productos", icon: <Shirt size={18} />, roles: ["direccion", "produccion"] },
+  { to: "/tablero", label: "Tablero", icon: <BarChart3 size={18} />, roles: ["superadmin", "direccion", "produccion"] },
+  { to: "/ordenes", label: "Órdenes", icon: <Boxes size={18} />, roles: ["superadmin", "direccion", "produccion"] },
+  { to: "/calidad", label: "Calidad", icon: <ShieldCheck size={18} />, roles: ["superadmin", "direccion", "produccion"] },
+  { to: "/talleres", label: "Talleres", icon: <Factory size={18} />, roles: ["superadmin", "direccion", "produccion"] },
+  { to: "/productos", label: "Productos", icon: <Shirt size={18} />, roles: ["superadmin", "direccion", "produccion"] },
   { to: "/entregas", label: "Mis entregas", icon: <PackageCheck size={18} />, roles: ["taller"] },
-  { to: "/logistica", label: "Logística", icon: <Truck size={18} />, roles: ["direccion", "produccion", "chofer"] },
-  { to: "/procesos", label: "Procesos", icon: <BookOpen size={18} />, roles: ["direccion", "produccion", "taller", "chofer"] },
-  { to: "/equipo", label: "Equipo", icon: <Users size={18} />, roles: ["direccion"] },
-  { to: "/ajustes", label: "Ajustes", icon: <Settings size={18} />, roles: ["direccion"] },
+  { to: "/logistica", label: "Logística", icon: <Truck size={18} />, roles: ["superadmin", "direccion", "produccion", "chofer"] },
+  { to: "/procesos", label: "Procesos", icon: <BookOpen size={18} />, roles: ["superadmin", "direccion", "produccion", "taller", "chofer"] },
+  { to: "/equipo", label: "Equipo", icon: <Users size={18} />, roles: ["superadmin", "direccion"] },
+  { to: "/ajustes", label: "Ajustes", icon: <Settings size={18} />, roles: ["superadmin", "direccion"] },
 ];
 export const homeFor = (r?: Rol) => (r === "taller" ? "/entregas" : r === "chofer" ? "/logistica" : "/tablero");
 
@@ -33,7 +33,7 @@ const GRUPOS: { nombre: string; rutas: string[] }[] = [
   { nombre: "Catálogo", rutas: ["/productos", "/talleres", "/procesos"] },
   { nombre: "Empresa", rutas: ["/equipo", "/ajustes"] },
 ];
-const ROL_ICON: Record<Rol, ReactNode> = { direccion: <Eye size={16} />, produccion: <Boxes size={16} />, taller: <Factory size={16} />, chofer: <Truck size={16} /> };
+const ROL_ICON: Record<Rol, ReactNode> = { superadmin: <KeyRound size={16} />, direccion: <Eye size={16} />, produccion: <Boxes size={16} />, taller: <Factory size={16} />, chofer: <Truck size={16} /> };
 
 function MenuUsuario({ onClose, dark = false }: { onClose: () => void; dark?: boolean }) {
   const yo = useYo();
@@ -41,22 +41,22 @@ function MenuUsuario({ onClose, dark = false }: { onClose: () => void; dark?: bo
   const { vistaComo, setVistaComo, tema, setTema, logout } = useStore();
   const nav = useNavigate();
   if (!yo) return null;
-  const ver = (r: Rol) => { const v = r === "direccion" ? null : r; setVistaComo(v); nav(homeFor(r)); onClose(); };
+  const ver = (r: Rol) => { const v = r === yo.rol ? null : r; setVistaComo(v); nav(homeFor(r)); onClose(); };
   return (
     <div className={cx("w-full overflow-hidden rounded-2xl border", dark ? "border-line bg-surface text-ink" : "border-line bg-surface text-ink")}>
       <div className="flex items-center gap-3 border-b border-line p-3.5">
         <Avatar name={yo.nombre} color={yo.color} size={38} />
         <div className="min-w-0"><div className="truncate text-[14px] font-bold">{yo.nombre}</div><div className="truncate text-[12px] text-muted">{yo.email}</div></div>
       </div>
-      {yo.rol === "direccion" && (
+      {esAdmin(yo.rol) && (
         <div className="border-b border-line p-2">
           <div className="px-2 pb-1.5 pt-1 text-[12px] font-semibold text-muted">Ver el sistema como</div>
-          {(Object.keys(ROLES) as Rol[]).map((r) => {
-            const on = (vistaComo || "direccion") === r;
+          {(Object.keys(ROLES) as Rol[]).filter((r) => yo.rol === "superadmin" || r !== "superadmin").map((r) => {
+            const on = (vistaComo || yo.rol) === r;
             return (
               <button key={r} onClick={() => ver(r)} className={cx("flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition", on ? "bg-ink/[.06]" : "hover:bg-ink/[.05]")}>
                 <span className={cx("grid h-8 w-8 shrink-0 place-items-center rounded-lg", on ? "bg-heat text-white" : "bg-ink/[.05] text-ink2")}>{ROL_ICON[r]}</span>
-                <span className="min-w-0 flex-1"><span className="block text-[13px] font-semibold">{ROLES[r].nombre}{r === "direccion" && " (tu vista)"}</span><span className="mt-0.5 block text-[11.5px] leading-snug text-muted">{ROLES[r].desc}</span></span>
+                <span className="min-w-0 flex-1"><span className="block text-[13px] font-semibold">{ROLES[r].nombre}{r === yo.rol && " (tu vista)"}</span><span className="mt-0.5 block text-[11.5px] leading-snug text-muted">{ROLES[r].desc}</span></span>
                 {on && <Check size={15} className="shrink-0 text-heat" />}
               </button>
             );
@@ -183,7 +183,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden bg-heat text-white">
               <div className="flex items-center justify-center gap-3 px-4 py-1.5 text-[12.5px] font-semibold">
                 <Eye size={14} /> Estás viendo el sistema como {ROLES[vistaComo].nombre}
-                <button onClick={() => { setVistaComo(null); nav(homeFor("direccion")); }} className="rounded-full bg-white/20 px-2.5 py-0.5 transition hover:bg-white/30">Volver a mi vista</button>
+                <button onClick={() => { setVistaComo(null); nav(homeFor(yo?.rol)); }} className="rounded-full bg-white/20 px-2.5 py-0.5 transition hover:bg-white/30">Volver a mi vista</button>
               </div>
             </motion.div>
           )}
@@ -233,7 +233,7 @@ function CommandPalette({ open, onClose, items }: { open: boolean; onClose: () =
               </div>
               <Command.List className="max-h-[360px] overflow-y-auto p-2 scroll-thin">
                 <Command.Empty className="px-3 py-6 text-center text-[13px] text-muted">Sin resultados</Command.Empty>
-                {(rol === "direccion" || rol === "produccion") && (
+                {(rol === "superadmin" || rol === "direccion" || rol === "produccion") && (
                   <Command.Group heading="Acciones" className="[&_[cmdk-group-heading]]:eyebrow [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5">
                     <Command.Item onSelect={() => go("/ordenes?nueva=1")} className="cmd-item"><Plus size={16} /> Nueva orden de producción</Command.Item>
                     <Command.Item onSelect={() => go("/logistica?nuevo=1")} className="cmd-item"><Truck size={16} /> Registrar viaje</Command.Item>
@@ -245,7 +245,7 @@ function CommandPalette({ open, onClose, items }: { open: boolean; onClose: () =
                 <Command.Group heading="Ir a" className="[&_[cmdk-group-heading]]:eyebrow [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5">
                   {items.map((i) => <Command.Item key={i.to} onSelect={() => go(i.to)} className="cmd-item">{i.icon} {i.label}</Command.Item>)}
                 </Command.Group>
-                {(rol === "direccion" || rol === "produccion") && (
+                {(rol === "superadmin" || rol === "direccion" || rol === "produccion") && (
                   <Command.Group heading="Órdenes" className="[&_[cmdk-group-heading]]:eyebrow [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5">
                     {ords.map((o) => (
                       <Command.Item key={o.id} value={`${ordenLabel(o.numero)} ${o.numero} ${o.cliente}`} onSelect={() => go(`/ordenes?o=${o.id}`)} className="cmd-item">

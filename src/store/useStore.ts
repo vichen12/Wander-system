@@ -27,7 +27,6 @@ interface State {
   moverEtapa: (ordenId: string, etapa: number, via?: string) => void;
   guardar: <K extends Exclude<Tabla, "ordenes">>(tabla: K, item: State[K][number]) => void;
   eliminar: (tabla: Exclude<Tabla, "ordenes">, id: string) => void;
-  agregarViaje: (v: Omit<Viaje, "id">) => void;
   pushMsg: (m: Omit<Mensaje, "id" | "ts">) => string;
   updMsg: (id: string, patch: Partial<Mensaje>) => void;
   limpiarChat: () => void;
@@ -36,6 +35,8 @@ interface State {
 }
 
 function seedState() {
+  // Con Supabase no se muestran datos de ejemplo: todo viene de la base.
+  if (remote.enabled) return { usuarios: [], materiales: [], productos: [], talleres: [], ordenes: [], viajes: [], procesos: [], seeded: true };
   const { ordenes, viajes } = buildSeed();
   return { usuarios: SEED_USUARIOS, materiales: SEED_MATERIALES, productos: SEED_PRODUCTOS, talleres: SEED_TALLERES, ordenes, viajes, procesos: SEED_PROCESOS, seeded: true };
 }
@@ -70,10 +71,11 @@ export const useStore = create<State>()(
       registrarEntrega: (ordenId, e) => {
         const o = get().ordenes.find((x) => x.id === ordenId); if (!o) return;
         const ev: Evento = { id: uid("e"), tipo: "entrega", etapa: o.etapa, unidades: e.unidades, tallerId: e.tallerId, obs: e.obs || "", fecha: today(), ts: Date.now(), por: get().sesion || undefined, via: e.via };
-        if (remote.enabled && currentRol(get()) === "taller") {
+        const real = get().usuarios.find((u) => u.id === get().sesion)?.rol;
+        if (remote.enabled && real === "taller") {
           // Los talleres no pueden editar órdenes: la entrega pasa por una función segura en Supabase.
           set({ ordenes: get().ordenes.map((x) => (x.id === ordenId ? { ...x, historial: [...x.historial, ev] } : x)) });
-          remote.rpcEntrega(ordenId, ev); return;
+          remote.rpcEntrega(ordenId, ev).catch(() => {}); return;
         }
         get().editarOrden(ordenId, { historial: [...o.historial, ev] });
       },
@@ -96,7 +98,6 @@ export const useStore = create<State>()(
         sync(tabla, item);
       },
       eliminar: (tabla, id) => { set({ [tabla]: (get()[tabla] as { id: string }[]).filter((x) => x.id !== id) } as Partial<State>); unsync(tabla, id); },
-      agregarViaje: (v) => { const viaje = { ...v, id: uid("v") }; set({ viajes: [viaje, ...get().viajes] }); sync("viajes", viaje); },
       pushMsg: (m) => { const id = uid("m"); set({ chat: [...get().chat, { ...m, id, ts: Date.now() }] }); return id; },
       updMsg: (id, patch) => set({ chat: get().chat.map((m) => (m.id === id ? { ...m, ...patch } : m)) }),
       limpiarChat: () => set({ chat: [] }),
@@ -119,7 +120,7 @@ export const useStore = create<State>()(
 export function currentRol(s: Pick<State, "usuarios" | "sesion" | "vistaComo">): Rol | undefined {
   const u = s.usuarios.find((x) => x.id === s.sesion);
   if (!u) return undefined;
-  return (u.rol === "direccion" && s.vistaComo) || u.rol;
+  return ((u.rol === "direccion" || u.rol === "superadmin") && s.vistaComo) || u.rol;
 }
 export const useYo = () => useStore((s) => s.usuarios.find((u) => u.id === s.sesion));
 export const useRol = () => useStore((s) => currentRol(s));

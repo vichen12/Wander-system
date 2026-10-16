@@ -8,12 +8,14 @@ import { responder } from "../lib/assistant";
 import { remote } from "../lib/supabase";
 import { ROLES, type AccionPropuesta, type Mensaje } from "../lib/types";
 import { festejar } from "../views/Ordenes";
+import { aplicarMovChat, lugaresDe } from "../lib/viajes";
 
 const SUG: Record<string, string[]> = {
+  superadmin: ["¿Cómo venimos este mes?", "¿Qué está atrasado?", "¿Qué taller tiene más fallas?", "¿Cuántos viajes hizo la camioneta?"],
   direccion: ["¿Cómo venimos este mes?", "¿Qué está atrasado?", "¿Qué taller tiene más fallas?", "¿Cuánta tela necesito comprar?"],
-  produccion: ["¿Qué órdenes hay en confección?", "¿Qué vence esta semana?", "Entregaron 80 buzos de la orden 30", "Pasá la orden 31 a corte"],
-  taller: ["Entregué 120 prendas de la orden 28", "¿Qué tengo pendiente?"],
-  chofer: ["Llevé 200 remeras de la fábrica a Bordados Centro", "¿Cuántos viajes hice este mes?"],
+  produccion: ["¿Qué órdenes hay en confección?", "¿Qué vence esta semana?", "Entregaron 80 buzos de la orden 24", "Pasá la orden 27 a confección"],
+  taller: ["Entregué 50 prendas de la orden 24", "¿Qué tengo pendiente?"],
+  chofer: ["Retiré 50 de la orden 24 de Confección Las Heras", "Dejé 50 de la orden 24 en Bordados Centro", "¿Cuántos viajes hice este mes?"],
 };
 
 export default function ChatWidget() {
@@ -39,8 +41,12 @@ export default function ChatWidget() {
       let r: { texto: string; accion?: AccionPropuesta };
       if (remote.enabled) {
         const b64 = f ? await toB64(f.file) : undefined;
-        const out = await remote.asistente({ mensaje: t, rol, historial: s.chat.slice(-10).map((m) => ({ de: m.de, texto: m.texto })) }, b64);
-        r = { texto: out?.texto || "No pude responder.", accion: (out?.acciones?.[0] as AccionPropuesta) || undefined };
+        const out = await remote.asistente({ mensaje: t, rol, historial: s.chat.slice(-10).map((m) => ({ de: m.de, texto: m.texto })) }, b64).catch(() => null);
+        if (!out || (out as { sinClave?: boolean }).sinClave) {
+          // Sin IA disponible: responde el asistente local con los mismos datos.
+          r = f && !t ? { texto: "Para leer fotos hace falta que el super admin cargue la clave de IA. Mientras tanto, escribime qué entregaste y lo cargo." }
+            : responder(t, { rol, ordenes: s.ordenes, talleres: s.talleres, productos: s.productos, materiales: s.materiales, viajes: s.viajes, miTaller });
+        } else r = { texto: out.texto || "No pude responder.", accion: (out.acciones?.[0] as AccionPropuesta) || undefined };
       } else {
         await new Promise((ok) => setTimeout(ok, 550 + Math.random() * 500));
         r = f && !t ? { texto: "Para leer fotos de remitos hace falta conectar el sistema a Supabase (ver Ajustes). Mientras tanto, escribime qué entregaste y lo cargo." }
@@ -56,7 +62,7 @@ export default function ChatWidget() {
     if (a.tipo === "entrega") st.registrarEntrega(a.ordenId, { unidades: a.unidades, tallerId: a.tallerId, via: "asistente" });
     if (a.tipo === "avance") { const o = st.ordenes.find((x) => x.id === a.ordenId); if (o) { st.moverEtapa(o.id, o.etapa + 1, "asistente"); if (o.etapa + 1 === 7) festejar(); } }
     if (a.tipo === "calidad") st.registrarCalidad(a.ordenId, { tallerId: a.tallerId, revisadas: a.revisadas, fallas: a.fallas, motivo: a.motivo });
-    if (a.tipo === "viaje") st.agregarViaje({ ...a.viaje, choferId: st.sesion, via: "asistente" });
+    if (a.tipo === "viaje") { const v = aplicarMovChat(a.mov, st.viajes, st.ordenes, lugaresDe(st.config, st.talleres), st.sesion); if (!v) return toast.error("No pude armar el viaje: revisá la orden y el lugar."); st.guardar("viajes", v); }
     st.updMsg(m.id, { accion: { ...a, estado: "hecha" } as AccionPropuesta });
     toast.success("Guardado");
   };
